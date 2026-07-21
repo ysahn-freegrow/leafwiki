@@ -56,6 +56,25 @@ $(PLATFORMS):
 	 tar -czf $(RELEASE_DIR)/$$OUTPUT.tar.gz -C $(RELEASE_DIR) $$OUTPUT ; \
 	 echo "📦 Compressed: zip and tar.gz"
 
+# Local production Docker image (single-arch, loaded into local docker)
+IMAGE ?= leafwiki:$(VERSION)
+docker-build:
+	docker build \
+		--file Dockerfile \
+		--target final \
+		--build-arg APP_VERSION=$(VERSION) \
+		--tag $(IMAGE) \
+		--tag leafwiki:latest \
+		.
+
+# Build and run the local image (http://localhost:8080)
+docker-run: docker-build
+	docker run --rm -it \
+		-p 8080:8080 \
+		-v $(PWD)/data:/app/data \
+		--env-file .env \
+		$(IMAGE)
+
 # Final production Docker image
 docker-build-publish:
 ifndef REPO_OWNER
@@ -114,7 +133,9 @@ help:
 	@echo "  make run-e2e-local-fast   – Run E2E tests locally, skip UI build (use when dist/ is current)"
 	@echo "                              Optional: GREP=<pattern> to filter tests"
 	@echo "  make run                  – Run development server"
+	@echo "  make docker-build         – Build production Docker image locally (IMAGE=<tag> to override)"
+	@echo "  make docker-run           – Build and run the image at http://localhost:8080"
 	@echo "  make docker-build-publish – Build and push multi-arch Docker image"
 	@echo "  make changelog            – Generate changelog"
 
-.PHONY: all build run clean test bench fmt lint help docker-build-publish changelog run-e2e run-e2e-local run-e2e-local-fast run-proxy-e2e
+.PHONY: all build run clean test bench fmt lint help docker-build docker-run docker-build-publish changelog run-e2e run-e2e-local run-e2e-local-fast run-proxy-e2e
