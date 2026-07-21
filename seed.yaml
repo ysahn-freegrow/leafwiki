@@ -1,0 +1,74 @@
+goal: >-
+  LeafWiki 바이너리에 내장된 인증 필수 HTTP/SSE MCP 모듈(internal/wiki/mcp)을 추가하여,
+  팀원이 사용자별 JWT로 접속해 viewer 권한으로 위키 전체를 agentic RAG 검색하고
+  editor 권한으로 낙관적 잠금 기반 create/update/move 저작을 수행하는
+  read+write MCP 서버를 제공한다.
+constraints:
+  - Go 구현, LeafWiki 단일 바이너리에 내장 (별도 프로세스/사이드카 금지)
+  - RouteRegistrar 인터페이스를 구현하는 internal/wiki/mcp 모듈로 등록
+  - 기존 pages/search 도메인 서비스를 in-process 주입 (REST 자기호출 금지)
+  - 검색은 기존 SQLite FTS5+BM25 인덱스 재사용, 별도 벡터 DB/임베딩 도입 금지
+  - Transport는 /mcp 경로의 HTTP/SSE
+  - 인증 필수 - 사용자별 JWT Bearer, read=viewer 이상, write=editor 이상
+  - delete 계열 연산은 이번 범위에서 제외
+  - update_page/move_page는 낙관적 잠금 - version 인자 필수, 불일치 시 409 반환
+  - write 연산은 호출자 JWT 신원으로 revision 저작자(lastAuthorId)에 귀속된다
+  - 쓰기 확인(휴먼 승인)은 MCP 클라이언트 승인 UX에 위임, 서버는 role만 검증
+  - 기존 Go 테스트와 golangci-lint CI를 통과해야 함
+acceptance_criteria:
+  - viewer 토큰 사용자가 search_pages(excerpt 반환)와 get_page(전체 markdown+version 반환)로 관련 위키 문서를 agentic하게 회수할 수 있다
+  - list_tree, list_tags, get_page_links 읽기 툴로 계층·태그·백링크 브라우징이 가능하다
+  - editor 토큰 사용자가 create_page/update_page/move_page로 저작할 수 있고, viewer 토큰의 쓰기 호출은 거부된다
+  - update_page가 stale version 쓰기를 409로 거부하여 동시 편집 덮어쓰기를 방지한다
+  - MCP 클라이언트(Claude Desktop/Code)가 /mcp에 HTTP/SSE로 연결해 툴 호출과 본문 반환이 정상 동작한다
+  - 기존 CI(Go 테스트, golangci-lint)가 통과한다
+ontology_schema:
+  name: LeafWikiMCPModule
+  description: LeafWiki 위키를 agentic RAG 참조 및 저작 대상으로 노출하는 MCP 도메인 모델
+  fields:
+    - name: read_tools
+      type: array
+      description: search_pages, get_page, list_tree, list_tags, get_page_links (viewer 이상)
+    - name: write_tools
+      type: array
+      description: create_page, update_page, move_page (editor 이상, delete 제외)
+    - name: Page
+      type: object
+      description: id, path, title, content(markdown), version, tags, links를 갖는 위키 페이지
+    - name: SearchResult
+      type: object
+      description: title, path, excerpt, bm25_score - search_pages가 반환하는 경량 항목
+    - name: auth
+      type: object
+      description: 사용자별 JWT Bearer, role(viewer/editor/admin) 게이트, 낙관적 잠금 version, revision 저작자 귀속
+    - name: transport
+      type: object
+      description: /mcp 경로 HTTP/SSE 엔드포인트, RouteRegistrar로 등록
+evaluation_principles:
+  - name: reuse
+    description: 기존 pages/search 서비스와 FTS5 인덱스를 재사용하고 재구현하지 않는다
+    weight: 1.0
+  - name: security
+    description: role 기반 read/write 게이트가 정확하고 write 툴이 viewer에게 노출되지 않는다
+    weight: 1.0
+  - name: safety
+    description: 낙관적 잠금으로 동시 편집 손실을 막고 delete 등 파괴적 연산을 배제한다
+    weight: 0.9
+  - name: token_efficiency
+    description: 검색은 excerpt만, 본문은 명시적 get_page 호출로 컨텍스트를 절약한다
+    weight: 0.7
+exit_conditions:
+  - name: all_criteria_met
+    description: 모든 acceptance_criteria 충족
+    criteria: 100% of acceptance criteria are satisfied
+  - name: tests_green
+    description: 기존 Go 테스트와 golangci-lint 통과
+    criteria: Required automated tests and lint exit successfully
+metadata:
+  version: "2"
+  ambiguity_score: 0.10
+  interview_id: leafwiki-mcp-ragauthoring-path-b
+  qa:
+    passed_iteration: 2
+    score: 0.93
+    mode: fallback
