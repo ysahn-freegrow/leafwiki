@@ -29,6 +29,7 @@ import (
 	wikihealth "github.com/perber/wiki/internal/wiki/health"
 	wikiimporter "github.com/perber/wiki/internal/wiki/importer"
 	wikilinks "github.com/perber/wiki/internal/wiki/links"
+	wikimcp "github.com/perber/wiki/internal/wiki/mcp"
 	wikipages "github.com/perber/wiki/internal/wiki/pages"
 	"github.com/perber/wiki/internal/wiki/pagesave"
 	wikiproperties "github.com/perber/wiki/internal/wiki/properties"
@@ -64,6 +65,7 @@ type Wiki struct {
 	brandingRoutes   *wikibranding.Routes
 	importerRoutes   *wikiimporter.Routes
 	healthRoutes     *wikihealth.Routes
+	mcpRoutes        *wikimcp.Routes
 	revision         *revision.Service
 	links            *links.LinkService
 	tags             *tags.TagsService
@@ -365,6 +367,7 @@ func (w *Wiki) buildRoutes(options *WikiOptions) {
 		wikiresync.NewGetResyncStatusUseCase(w.resyncJob),
 		w.auth,
 	)
+	w.mcpRoutes = w.buildMCPRoutes()
 }
 
 // ─── Domain route builder helpers ────────────────────────────────────────────
@@ -486,6 +489,28 @@ func (w *Wiki) buildPropertiesRoutes() *wikiproperties.Routes {
 	})
 }
 
+func (w *Wiki) buildMCPRoutes() *wikimcp.Routes {
+	return wikimcp.NewRoutes(w.MCPRoutesConfig())
+}
+
+// MCPRoutesConfig returns the dependency bundle for the MCP module.
+// Exposed so external test code can build MCP routes without accessing
+// unexported Wiki fields.
+func (w *Wiki) MCPRoutesConfig() wikimcp.RoutesConfig {
+	o := w.newPageOrchestrator()
+	return wikimcp.RoutesConfig{
+		SearchUseCase: wikisearch.NewSearchUseCase(w.searchIndex, w.tags, w.tree),
+		TreeService:   w.tree,
+		SlugService:   w.slug,
+		TagsService:   w.tags,
+		LinkService:   w.links,
+		CreatePage:    wikipages.NewCreatePageUseCase(w.tree, w.slug, o, w.log, w.metrics),
+		UpdatePage:    wikipages.NewUpdatePageUseCase(w.tree, w.slug, o, w.log, w.metrics),
+		MovePage:      wikipages.NewMovePageUseCase(w.tree, o, w.log, w.metrics),
+		AuthService:   w.auth,
+	}
+}
+
 func (w *Wiki) buildBrandingRoutes() *wikibranding.Routes {
 	return wikibranding.NewRoutes(wikibranding.RoutesConfig{
 		GetBranding:     wikibranding.NewGetBrandingUseCase(w.branding),
@@ -536,6 +561,7 @@ func (w *Wiki) Registrars() []httpinternal.RouteRegistrar {
 		w.importerRoutes,
 		w.healthRoutes,
 		w.resyncRoutes,
+		w.mcpRoutes,
 	}
 	if w.backupRoutes != nil {
 		registrars = append(registrars, w.backupRoutes)
