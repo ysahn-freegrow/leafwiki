@@ -63,24 +63,41 @@ func newTestEnv(t *testing.T) *testEnv {
 	return &testEnv{w: w, router: engine}
 }
 
-// createViewerToken creates a viewer user in the wiki and returns its access token.
+// createViewerToken creates a viewer user in the wiki and returns an MCP token
+// for it. Since the hard cutover, /mcp accepts only MCP tokens (not the web
+// access token), so tests authenticate with a token minted via CreateMCPToken.
 func createViewerToken(t *testing.T, env *testEnv) string {
 	t.Helper()
-	_, err := env.w.UserService().CreateUser(
+	user, err := env.w.UserService().CreateUser(
 		"viewer1", "viewer1@example.com", "viewer1pass", coreauth.RoleViewer,
 	)
 	if err != nil {
 		t.Fatalf("CreateUser viewer: %v", err)
 	}
-	tok, err := env.w.AuthService().Login("viewer1", "viewer1pass")
+	token, _, err := env.w.AuthService().CreateMCPToken(user.ID)
 	if err != nil {
-		t.Fatalf("Login viewer: %v", err)
+		t.Fatalf("CreateMCPToken viewer: %v", err)
 	}
-	return tok.Token
+	return token
 }
 
-// adminToken returns a JWT access token for the built-in admin user.
+// adminToken returns an MCP token for the built-in admin user.
 func adminToken(t *testing.T, env *testEnv) string {
+	t.Helper()
+	admin, err := env.w.UserService().GetUserByIdentifier("admin")
+	if err != nil {
+		t.Fatalf("GetUserByIdentifier admin: %v", err)
+	}
+	token, _, err := env.w.AuthService().CreateMCPToken(admin.ID)
+	if err != nil {
+		t.Fatalf("CreateMCPToken admin: %v", err)
+	}
+	return token
+}
+
+// webAccessToken returns a normal web access-token JWT (as issued by Login) for
+// the built-in admin user, used to prove /mcp rejects web tokens.
+func webAccessToken(t *testing.T, env *testEnv) string {
 	t.Helper()
 	tok, err := env.w.AuthService().Login("admin", "admin")
 	if err != nil {

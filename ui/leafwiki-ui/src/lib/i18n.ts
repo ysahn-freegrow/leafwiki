@@ -6,6 +6,7 @@ import enBranding from '../locales/en/branding.json'
 import enEditor from '../locales/en/editor.json'
 import enErrors from '../locales/en/errors.json'
 import enMaintenance from '../locales/en/maintenance.json'
+import enMcpTokens from '../locales/en/mcpTokens.json'
 import enSearch from '../locales/en/search.json'
 import enSnapshot from '../locales/en/snapshot.json'
 import enUsers from '../locales/en/users.json'
@@ -22,6 +23,7 @@ i18next.use(initReactI18next).init({
       errors: enErrors,
       editor: enEditor,
       maintenance: enMaintenance,
+      mcpTokens: enMcpTokens,
       search: enSearch,
       snapshot: enSnapshot,
       users: enUsers,

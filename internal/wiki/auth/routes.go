@@ -42,6 +42,9 @@ type Routes struct {
 	confirmTOTPSetup  *ConfirmTOTPSetupUseCase
 	disableTOTP       *DisableTOTPUseCase
 	getTOTPStatus     *GetTOTPStatusUseCase
+	getMCPToken       *GetMCPTokenUseCase
+	createMCPToken    *CreateMCPTokenUseCase
+	revokeMCPToken    *RevokeMCPTokenUseCase
 	authService       *coreauth.AuthService
 }
 
@@ -61,6 +64,9 @@ type RoutesConfig struct {
 	ConfirmTOTPSetup  *ConfirmTOTPSetupUseCase
 	DisableTOTP       *DisableTOTPUseCase
 	GetTOTPStatus     *GetTOTPStatusUseCase
+	GetMCPToken       *GetMCPTokenUseCase
+	CreateMCPToken    *CreateMCPTokenUseCase
+	RevokeMCPToken    *RevokeMCPTokenUseCase
 	AuthService       *coreauth.AuthService
 }
 
@@ -81,6 +87,9 @@ func NewRoutes(cfg RoutesConfig) *Routes {
 		confirmTOTPSetup:  cfg.ConfirmTOTPSetup,
 		disableTOTP:       cfg.DisableTOTP,
 		getTOTPStatus:     cfg.GetTOTPStatus,
+		getMCPToken:       cfg.GetMCPToken,
+		createMCPToken:    cfg.CreateMCPToken,
+		revokeMCPToken:    cfg.RevokeMCPToken,
 		authService:       cfg.AuthService,
 	}
 }
@@ -142,6 +151,11 @@ func (r *Routes) RegisterRoutes(ctx httpinternal.RouterContext) {
 		authGroup.POST("/users/me/totp/setup/confirm", totpSetupRateLimiter, r.handleConfirmTOTPSetup(ctx))
 		authGroup.POST("/users/me/totp/disable", totpSetupRateLimiter, r.handleDisableTOTP(ctx))
 		authGroup.GET("/users/me/totp/status", r.handleTOTPStatus)
+
+		// Self-service MCP token: each user manages their own single token.
+		authGroup.GET("/users/me/mcp-token", r.handleGetMCPToken)
+		authGroup.POST("/users/me/mcp-token", r.handleCreateMCPToken)
+		authGroup.DELETE("/users/me/mcp-token", r.handleRevokeMCPToken)
 	}
 }
 
@@ -572,4 +586,54 @@ func (r *Routes) handleTOTPStatus(c *gin.Context) {
 		"enabled":                out.Enabled,
 		"recoveryCodesRemaining": out.RecoveryCodesRemaining,
 	})
+}
+
+// handleGetMCPToken returns metadata about the current user's MCP token
+// (created/expiry/last-used) or null when none exists. It NEVER returns the
+// token value — that is shown only once, at creation.
+func (r *Routes) handleGetMCPToken(c *gin.Context) {
+	user := authmw.MustGetUser(c)
+	if user == nil {
+		return
+	}
+	out, err := r.getMCPToken.Execute(c.Request.Context(), GetMCPTokenInput{UserID: user.ID})
+	if err != nil {
+		respondWithAuthError(c, err)
+		return
+	}
+	// "metadata" is null when the user has no token yet. The token value itself
+	// is never returned here — only at creation.
+	c.JSON(http.StatusOK, gin.H{"metadata": out.Token})
+}
+
+// handleCreateMCPToken generates (or regenerates) the current user's MCP token
+// and returns the plaintext value exactly once alongside its metadata. Any
+// previous token is invalidated.
+func (r *Routes) handleCreateMCPToken(c *gin.Context) {
+	user := authmw.MustGetUser(c)
+	if user == nil {
+		return
+	}
+	out, err := r.createMCPToken.Execute(c.Request.Context(), CreateMCPTokenInput{UserID: user.ID})
+	if err != nil {
+		respondWithAuthError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"token":    out.Token,
+		"metadata": out.Meta,
+	})
+}
+
+// handleRevokeMCPToken immediately invalidates the current user's MCP token.
+func (r *Routes) handleRevokeMCPToken(c *gin.Context) {
+	user := authmw.MustGetUser(c)
+	if user == nil {
+		return
+	}
+	if err := r.revokeMCPToken.Execute(c.Request.Context(), RevokeMCPTokenInput{UserID: user.ID}); err != nil {
+		respondWithAuthError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

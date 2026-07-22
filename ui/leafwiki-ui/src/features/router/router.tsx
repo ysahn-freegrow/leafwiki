@@ -5,6 +5,7 @@ import {
   Importer,
   LoginForm,
   MaintenanceSettings,
+  McpTokenSettings,
   PageEditor,
   PageHistoryPage,
   PageViewer,
@@ -107,6 +108,16 @@ export const createLeafWikiRouter = (
         ) : (
           <AuthWrapper>
             <MaintenanceSettings />
+          </AuthWrapper>
+        ),
+      },
+      {
+        path: '/settings/mcp-tokens',
+        element: isReadOnlyViewer ? (
+          <Navigate to="/" />
+        ) : (
+          <AuthWrapper>
+            <McpTokenSettings />
           </AuthWrapper>
         ),
       },

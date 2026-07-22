@@ -8,20 +8,21 @@ import (
 	coreauth "github.com/perber/wiki/internal/core/auth"
 )
 
-// editorToken creates an editor user in the wiki and returns its access token.
+// editorToken creates an editor user in the wiki and returns an MCP token for
+// it (the /mcp endpoints accept only MCP tokens since the hard cutover).
 func editorToken(t *testing.T, env *testEnv) string {
 	t.Helper()
-	_, err := env.w.UserService().CreateUser(
+	user, err := env.w.UserService().CreateUser(
 		"editor1", "editor1@example.com", "editor1pass", coreauth.RoleEditor,
 	)
 	if err != nil {
 		t.Fatalf("CreateUser editor: %v", err)
 	}
-	tok, err := env.w.AuthService().Login("editor1", "editor1pass")
+	token, _, err := env.w.AuthService().CreateMCPToken(user.ID)
 	if err != nil {
-		t.Fatalf("Login editor: %v", err)
+		t.Fatalf("CreateMCPToken editor: %v", err)
 	}
-	return tok.Token
+	return token
 }
 
 // callTool is a helper that invokes a tools/call and returns the text of the

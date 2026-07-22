@@ -43,6 +43,39 @@ func (u *User) ToPublicUser() *PublicUser {
 	}
 }
 
+// MCPToken is the non-secret record of a user's MCP access token. The token's
+// plaintext value is never stored (only a hash) and is returned exactly once at
+// creation, so this struct deliberately carries no secret material.
+type MCPToken struct {
+	ID         string
+	UserID     string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	LastUsedAt *time.Time // nil until the token has been used at least once
+}
+
+// PublicMCPToken is the metadata shape exposed to the owning user's settings
+// UI. It never includes the token value; unix-second timestamps keep it
+// trivially serialisable for the frontend.
+type PublicMCPToken struct {
+	CreatedAt  int64  `json:"createdAt"`
+	ExpiresAt  int64  `json:"expiresAt"`
+	LastUsedAt *int64 `json:"lastUsedAt"`
+}
+
+// ToPublicMCPToken converts the internal record into its safe metadata shape.
+func (m *MCPToken) ToPublicMCPToken() *PublicMCPToken {
+	pub := &PublicMCPToken{
+		CreatedAt: m.CreatedAt.Unix(),
+		ExpiresAt: m.ExpiresAt.Unix(),
+	}
+	if m.LastUsedAt != nil {
+		lu := m.LastUsedAt.Unix()
+		pub.LastUsedAt = &lu
+	}
+	return pub
+}
+
 // Roles
 const (
 	RoleAdmin  = "admin"

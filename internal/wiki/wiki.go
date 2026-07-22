@@ -218,6 +218,12 @@ func (w *Wiki) initAuth(options *WikiOptions) error {
 			return err
 		}
 		w.auth = auth.NewAuthService(w.user, sessionStore, w.totp, options.JWTSecret, options.AccessTokenTimeout, options.RefreshTokenTimeout)
+
+		mcpTokenStore, err := auth.NewMCPTokenStore(w.storageDir)
+		if err != nil {
+			return err
+		}
+		w.auth.EnableMCPTokens(mcpTokenStore)
 	}
 	return nil
 }
@@ -421,13 +427,16 @@ func (w *Wiki) buildAuthRoutes() *wikiauth.Routes {
 		CreateUser:        wikiauth.NewCreateUserUseCase(w.user, w.userResolver, w.log),
 		UpdateUser:        wikiauth.NewUpdateUserUseCase(w.user, w.userResolver, w.log),
 		ChangeOwnPassword: wikiauth.NewChangeOwnPasswordUseCase(w.user),
-		DeleteUser:        wikiauth.NewDeleteUserUseCase(w.user, w.userResolver, w.favorites, w.log),
+		DeleteUser:        wikiauth.NewDeleteUserUseCase(w.user, w.userResolver, w.favorites, w.auth, w.log),
 		GetUsers:          wikiauth.NewGetUsersUseCase(w.user),
 		GetUserByID:       wikiauth.NewGetUserByIDUseCase(w.user),
 		StartTOTPSetup:    wikiauth.NewStartTOTPSetupUseCase(w.auth),
 		ConfirmTOTPSetup:  wikiauth.NewConfirmTOTPSetupUseCase(w.auth),
 		DisableTOTP:       wikiauth.NewDisableTOTPUseCase(w.auth),
 		GetTOTPStatus:     wikiauth.NewGetTOTPStatusUseCase(w.auth),
+		GetMCPToken:       wikiauth.NewGetMCPTokenUseCase(w.auth),
+		CreateMCPToken:    wikiauth.NewCreateMCPTokenUseCase(w.auth),
+		RevokeMCPToken:    wikiauth.NewRevokeMCPTokenUseCase(w.auth),
 		AuthService:       w.auth,
 	})
 }

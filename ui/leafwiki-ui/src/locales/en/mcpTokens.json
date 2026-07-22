@@ -1,0 +1,47 @@
+{
+  "pageTitle": "MCP Token",
+  "pageDescription": "Manage your personal token for connecting MCP clients to LeafWiki. The token authenticates as you and grants your permissions.",
+  "menuLabel": "MCP Token",
+  "sectionTitle": "Personal MCP Token",
+  "sectionDescription": "Use this token to connect an MCP client to LeafWiki. Each user has at most one token. Tokens expire 90 days after they are created.",
+  "loading": "Loading…",
+  "emptyState": "No token yet.",
+  "emptyHint": "Generate a token to connect an MCP client. The token will be shown only once.",
+  "createdLabel": "Created",
+  "expiresLabel": "Expires",
+  "lastUsedLabel": "Last used",
+  "neverUsed": "Never used",
+  "generateButton": "Generate token",
+  "regenerateButton": "Regenerate token",
+  "revokeButton": "Revoke token",
+  "generating": "Generating…",
+  "actionsTitle": "Token actions",
+  "actionsDescription": "Generate a new token or revoke the existing one. Regenerating replaces the current token.",
+  "reveal": {
+    "title": "Your new MCP token",
+    "description": "Copy this token now and store it somewhere safe.",
+    "warning": "This token is shown only once. You won't be able to see it again after closing this view.",
+    "copyButton": "Copy token",
+    "doneButton": "I've saved it",
+    "tokenLabel": "MCP token"
+  },
+  "regenerateConfirm": {
+    "title": "Regenerate MCP token?",
+    "description": "This invalidates your current token. Any MCP client using the old token will stop working until you update it with the new token.",
+    "cancel": "Cancel",
+    "action": "Regenerate"
+  },
+  "revokeConfirm": {
+    "title": "Revoke MCP token?",
+    "description": "This permanently deletes your token. Any MCP client using it will stop working immediately. This cannot be undone.",
+    "cancel": "Cancel",
+    "action": "Revoke"
+  },
+  "toast": {
+    "generated": "MCP token generated",
+    "generateFailed": "Failed to generate MCP token",
+    "revoked": "MCP token revoked",
+    "revokeFailed": "Failed to revoke MCP token",
+    "copied": "Token copied to clipboard"
+  }
+}

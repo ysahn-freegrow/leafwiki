@@ -10,6 +10,9 @@ export const Importer = lazy(() => import('../importer/Importer'))
 export const MaintenanceSettings = lazy(
   () => import('../maintenance/MaintenanceSettings'),
 )
+export const McpTokenSettings = lazy(
+  () => import('../mcptokens/McpTokenSettings'),
+)
 export const PageHistoryPage = lazy(() => import('../page/PageHistoryPage'))
 export const PermalinkRedirect = lazy(() => import('../page/PermalinkRedirect'))
 export const RootRedirect = lazy(() => import('../page/RootRedirect'))

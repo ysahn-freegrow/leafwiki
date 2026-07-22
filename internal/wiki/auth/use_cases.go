@@ -397,11 +397,12 @@ type DeleteUserUseCase struct {
 	user      *coreauth.UserService
 	resolver  *coreauth.UserResolver
 	favorites *favorites.FavoritesStore
+	auth      *coreauth.AuthService
 	log       *slog.Logger
 }
 
-func NewDeleteUserUseCase(u *coreauth.UserService, r *coreauth.UserResolver, f *favorites.FavoritesStore, log *slog.Logger) *DeleteUserUseCase {
-	return &DeleteUserUseCase{user: u, resolver: r, favorites: f, log: log}
+func NewDeleteUserUseCase(u *coreauth.UserService, r *coreauth.UserResolver, f *favorites.FavoritesStore, a *coreauth.AuthService, log *slog.Logger) *DeleteUserUseCase {
+	return &DeleteUserUseCase{user: u, resolver: r, favorites: f, auth: a, log: log}
 }
 
 func (uc *DeleteUserUseCase) Execute(_ context.Context, in DeleteUserInput) error {
@@ -413,6 +414,12 @@ func (uc *DeleteUserUseCase) Execute(_ context.Context, in DeleteUserInput) erro
 	}
 	if err := uc.favorites.DeleteAllForUser(in.ID); err != nil {
 		uc.log.Warn("failed to delete favorites for deleted user", "userID", in.ID, "error", err)
+	}
+	// Cascade-delete the user's MCP token. Nil-safe when auth is disabled.
+	if uc.auth != nil {
+		if err := uc.auth.DeleteMCPTokensForUser(in.ID); err != nil {
+			uc.log.Warn("failed to delete mcp token for deleted user", "userID", in.ID, "error", err)
+		}
 	}
 	return nil
 }

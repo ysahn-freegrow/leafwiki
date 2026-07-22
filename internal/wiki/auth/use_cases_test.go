@@ -280,7 +280,7 @@ func TestDeleteUser_RemovesFavoritesForUser(t *testing.T) {
 		t.Fatalf("failed to seed favorite: %v", err)
 	}
 
-	uc := NewDeleteUserUseCase(userSvc, resolver, favoritesStore, slog.Default())
+	uc := NewDeleteUserUseCase(userSvc, resolver, favoritesStore, nil, slog.Default())
 	if err := uc.Execute(context.Background(), DeleteUserInput{ID: user.ID}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

@@ -57,32 +57,50 @@ func (r *Routes) RegisterRoutes(ctx httpinternal.RouterContext) {
 	group.GET("", r.server.handleSSE)
 }
 
-// requireBearerAuth validates a JWT Bearer token supplied in the
-// Authorization header.  Unlike the cookie-based auth used by REST routes,
-// MCP clients authenticate with per-user tokens.
+// mcpTokenInvalidCode is the stable, machine-readable error code returned for
+// every /mcp authentication failure. An MCP client can switch on this single
+// code to decide "regenerate your MCP token" without the server disclosing the
+// precise reason (unknown / expired / revoked / wrong type), which would leak
+// token state.
+const mcpTokenInvalidCode = "mcp_token_invalid"
+
+// requireBearerAuth validates the dedicated MCP token supplied as a Bearer
+// token in the Authorization header. This is a deliberate hard cutover from
+// the previous behaviour: only a token minted via CreateMCPToken is accepted
+// here — web access/refresh JWTs are rejected, since they are scoped to the
+// cookie-authenticated REST API, not to /mcp. All failures return HTTP 401
+// with the stable mcpTokenInvalidCode error code.
 func requireBearerAuth(authService *coreauth.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized,
-				gin.H{"error": "Bearer token required"})
+			abortMCPUnauthorized(c)
 			return
 		}
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
 		if authService == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized,
-				gin.H{"error": "Authentication not configured"})
+			abortMCPUnauthorized(c)
 			return
 		}
 
-		user, err := authService.ValidateToken(token)
+		user, err := authService.ValidateMCPToken(token)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized,
-				gin.H{"error": "Invalid or expired token"})
+			abortMCPUnauthorized(c)
 			return
 		}
 		c.Set("user", user)
 		c.Next()
 	}
+}
+
+// abortMCPUnauthorized writes the canonical 401 body for /mcp. The reason is
+// intentionally uniform across all failure modes.
+func abortMCPUnauthorized(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+		"error": gin.H{
+			"code":    mcpTokenInvalidCode,
+			"message": "Invalid or expired MCP token",
+		},
+	})
 }

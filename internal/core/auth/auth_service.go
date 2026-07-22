@@ -28,6 +28,19 @@ type AuthService struct {
 	refreshTokenLifetime time.Duration
 	attempts             *loginAttemptTracker
 	dummyHash            []byte
+
+	// mcpTokens is the optional store backing long-lived, MCP-only access
+	// tokens. It is attached via EnableMCPTokens after construction (rather
+	// than as a constructor parameter) to avoid churning every NewAuthService
+	// call site; nil means the feature is not wired.
+	mcpTokens *MCPTokenStore
+}
+
+// EnableMCPTokens attaches the MCP-token store, enabling the CreateMCPToken /
+// ValidateMCPToken / GetMCPTokenMeta / RevokeMCPToken methods. Called once at
+// wiring time when authentication is enabled.
+func (a *AuthService) EnableMCPTokens(store *MCPTokenStore) {
+	a.mcpTokens = store
 }
 
 func NewAuthService(userService *UserService, sessionStore *SessionStore, totpService *TOTPService, secret string, accessTokenTimeout, refreshTokenTimeout time.Duration) *AuthService {
@@ -51,6 +64,12 @@ func NewAuthService(userService *UserService, sessionStore *SessionStore, totpSe
 
 func (a *AuthService) Close() error {
 	var errs []error
+
+	if a.mcpTokens != nil {
+		if err := a.mcpTokens.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 
 	if a.sessionStore != nil {
 		if err := a.sessionStore.Close(); err != nil {

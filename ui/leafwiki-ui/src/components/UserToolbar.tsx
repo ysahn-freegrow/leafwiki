@@ -42,7 +42,13 @@ const shortcutsDialogHotkeyLabel = getShortcutDisplayLabel(
 )
 
 export default function UserToolbar() {
-  const { t } = useTranslation(['auth', 'backup', 'snapshot', 'users'])
+  const { t } = useTranslation([
+    'auth',
+    'backup',
+    'snapshot',
+    'users',
+    'mcpTokens',
+  ])
   const supportPageUrl = 'https://leafwiki.com/support/'
   const user = useSessionStore((s) => s.user)
   const logout = useSessionStore((s) => s.logout)
@@ -207,6 +213,15 @@ export default function UserToolbar() {
           >
             {t('userMenu.changeOwnPassword')}
           </DropdownMenuItem>
+          {!authDisabled && (
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={() => navigate('/settings/mcp-tokens')}
+              data-testid="user-toolbar-mcp-tokens"
+            >
+              {t('menuLabel', { ns: 'mcpTokens' })}
+            </DropdownMenuItem>
+          )}
           {!authDisabled &&
             (user?.totpEnabled ? (
               <DropdownMenuItem
