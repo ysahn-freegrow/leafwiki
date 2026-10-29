@@ -516,6 +516,8 @@ func (w *Wiki) MCPRoutesConfig() wikimcp.RoutesConfig {
 		CreatePage:    wikipages.NewCreatePageUseCase(w.tree, w.slug, o, w.log, w.metrics),
 		UpdatePage:    wikipages.NewUpdatePageUseCase(w.tree, w.slug, o, w.log, w.metrics),
 		MovePage:      wikipages.NewMovePageUseCase(w.tree, o, w.log, w.metrics),
+		UploadAsset:   wikiassets.NewUploadAssetUseCase(w.tree, w.asset, w.revision, w.log),
+		UserService:   w.user,
 		AuthService:   w.auth,
 	}
 }

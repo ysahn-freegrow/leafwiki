@@ -9,11 +9,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	coreassets "github.com/perber/wiki/internal/core/assets"
 	coreauth "github.com/perber/wiki/internal/core/auth"
 	"github.com/perber/wiki/internal/core/tree"
 	httpinternal "github.com/perber/wiki/internal/http"
 	corelinks "github.com/perber/wiki/internal/links"
 	"github.com/perber/wiki/internal/tags"
+	wikiassets "github.com/perber/wiki/internal/wiki/assets"
 	wikipages "github.com/perber/wiki/internal/wiki/pages"
 	wikisearch "github.com/perber/wiki/internal/wiki/search"
 )
@@ -36,6 +38,8 @@ type RoutesConfig struct {
 	CreatePage    *wikipages.CreatePageUseCase
 	UpdatePage    *wikipages.UpdatePageUseCase
 	MovePage      *wikipages.MovePageUseCase
+	UploadAsset   *wikiassets.UploadAssetUseCase
+	UserService   *coreauth.UserService
 	AuthService   *coreauth.AuthService
 }
 
@@ -49,12 +53,22 @@ func NewRoutes(cfg RoutesConfig) *Routes {
 
 // RegisterRoutes implements httpinternal.RouteRegistrar.
 // It registers POST /mcp (Streamable HTTP) and GET /mcp (SSE) endpoints,
-// both protected by JWT Bearer authentication.
+// both protected by JWT Bearer authentication, plus POST /mcp/uploads/:ticket.
 func (r *Routes) RegisterRoutes(ctx httpinternal.RouterContext) {
+	r.server.maxUploadBytes = ctx.Opts.MaxAssetUploadSizeBytes
+	if r.server.maxUploadBytes <= 0 {
+		r.server.maxUploadBytes = coreassets.DefaultMaxUploadSizeBytes
+	}
+
 	group := ctx.Base.Group("/mcp")
 	group.Use(requireBearerAuth(r.authService))
 	group.POST("", r.server.handlePost)
 	group.GET("", r.server.handleSSE)
+
+	// Upload URLs issued by create_upload_url are authenticated by their
+	// single-use ticket rather than the MCP bearer token, so a shell (curl)
+	// can send file bytes directly without the model ever handling them.
+	ctx.Base.POST("/mcp/uploads/:ticket", r.server.handleUpload)
 }
 
 // mcpTokenInvalidCode is the stable, machine-readable error code returned for

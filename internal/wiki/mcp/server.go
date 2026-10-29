@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/perber/wiki/internal/core/tree"
 	corelinks "github.com/perber/wiki/internal/links"
 	"github.com/perber/wiki/internal/tags"
+	wikiassets "github.com/perber/wiki/internal/wiki/assets"
 	wikipages "github.com/perber/wiki/internal/wiki/pages"
 	wikisearch "github.com/perber/wiki/internal/wiki/search"
 )
@@ -38,18 +40,26 @@ type Server struct {
 	create *wikipages.CreatePageUseCase
 	update *wikipages.UpdatePageUseCase
 	move   *wikipages.MovePageUseCase
+
+	uploadAsset    *wikiassets.UploadAssetUseCase
+	users          *coreauth.UserService
+	uploads        *uploadTicketStore
+	maxUploadBytes int64
 }
 
 func newServer(cfg RoutesConfig) *Server {
 	return &Server{
-		search: cfg.SearchUseCase,
-		tree:   cfg.TreeService,
-		slug:   cfg.SlugService,
-		tags:   cfg.TagsService,
-		links:  cfg.LinkService,
-		create: cfg.CreatePage,
-		update: cfg.UpdatePage,
-		move:   cfg.MovePage,
+		search:      cfg.SearchUseCase,
+		tree:        cfg.TreeService,
+		slug:        cfg.SlugService,
+		tags:        cfg.TagsService,
+		links:       cfg.LinkService,
+		create:      cfg.CreatePage,
+		update:      cfg.UpdatePage,
+		move:        cfg.MovePage,
+		uploadAsset: cfg.UploadAsset,
+		users:       cfg.UserService,
+		uploads:     newUploadTicketStore(),
 	}
 }
 
@@ -170,7 +180,8 @@ func (s *Server) handlePost(c *gin.Context) {
 		return
 	}
 
-	resp := s.dispatch(c.Request.Context(), &req, u)
+	ctx := context.WithValue(c.Request.Context(), baseURLKey{}, requestBaseURL(c))
+	resp := s.dispatch(ctx, &req, u)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -202,7 +213,7 @@ func (s *Server) handleSSE(c *gin.Context) {
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
-func (s *Server) dispatch(ctx interface{ Done() <-chan struct{} }, req *jsonRPCRequest, user *coreauth.User) jsonRPCResponse {
+func (s *Server) dispatch(ctx context.Context, req *jsonRPCRequest, user *coreauth.User) jsonRPCResponse {
 	switch req.Method {
 	case "initialize":
 		return s.handleInitialize(req)
@@ -253,12 +264,13 @@ func (s *Server) handleToolsList(req *jsonRPCRequest, user *coreauth.User) jsonR
 	tools := readToolDefinitions()
 	if hasEditorRole(user) {
 		tools = append(tools, writeToolDefinitions()...)
+		tools = append(tools, uploadToolDefinition())
 	}
 	return jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: toolsListResult{Tools: tools}}
 }
 
 // handleToolsCall dispatches a tools/call request to the correct tool handler.
-func (s *Server) handleToolsCall(ctx interface{ Done() <-chan struct{} }, req *jsonRPCRequest, user *coreauth.User) jsonRPCResponse {
+func (s *Server) handleToolsCall(ctx context.Context, req *jsonRPCRequest, user *coreauth.User) jsonRPCResponse {
 	if user == nil {
 		return errorResp(req, errCodeInvalidRequest, "Unauthenticated")
 	}
@@ -284,7 +296,7 @@ func (s *Server) handleToolsCall(ctx interface{ Done() <-chan struct{} }, req *j
 	case "get_page_links":
 		return s.callGetPageLinks(req, params.Arguments)
 	// Write tools — editor or above.
-	case "create_page", "update_page", "move_page":
+	case "create_page", "update_page", "move_page", "create_upload_url":
 		if !hasEditorRole(user) {
 			return errorResp(req, http.StatusForbidden, "Insufficient role: write tools require editor")
 		}
@@ -293,6 +305,8 @@ func (s *Server) handleToolsCall(ctx interface{ Done() <-chan struct{} }, req *j
 			return s.callCreatePage(req, params.Arguments, user)
 		case "update_page":
 			return s.callUpdatePage(req, params.Arguments, user)
+		case "create_upload_url":
+			return s.callCreateUploadURL(ctx, req, params.Arguments, user)
 		default:
 			return s.callMovePage(req, params.Arguments, user)
 		}

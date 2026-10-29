@@ -25,14 +25,24 @@ func init() {
 // ─── Test environment ─────────────────────────────────────────────────────────
 
 type testEnv struct {
-	w      *wiki.Wiki
-	router *gin.Engine
+	w          *wiki.Wiki
+	router     *gin.Engine
+	storageDir string
+	basePath   string
 }
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
+	return newTestEnvWithOpts(t, httpinternal.RouterOptions{})
+}
+
+// newTestEnvWithOpts builds a test environment whose MCP routes are mounted
+// under opts.BasePath and registered with the given router options.
+func newTestEnvWithOpts(t *testing.T, opts httpinternal.RouterOptions) *testEnv {
+	t.Helper()
+	storageDir := t.TempDir()
 	w, err := wiki.NewWiki(&wiki.WikiOptions{
-		StorageDir:          t.TempDir(),
+		StorageDir:          storageDir,
 		AdminPassword:       "admin",
 		JWTSecret:           "test-secret-key-at-least-32-chars!!",
 		AccessTokenTimeout:  time.Hour,
@@ -48,7 +58,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	})
 
 	engine := gin.New()
-	base := engine.Group("")
+	base := engine.Group(opts.BasePath)
 	authCookies := authmw.NewAuthCookies(true, time.Hour, 24*time.Hour)
 	csrfCookie := security.NewCSRFCookie(true, 72*time.Hour)
 	rctx := httpinternal.RouterContext{
@@ -56,11 +66,11 @@ func newTestEnv(t *testing.T) *testEnv {
 		Base:        base,
 		AuthCookies: authCookies,
 		CSRFCookie:  csrfCookie,
-		Opts:        httpinternal.RouterOptions{},
+		Opts:        opts,
 	}
 	mcp.NewRoutes(w.MCPRoutesConfig()).RegisterRoutes(rctx)
 
-	return &testEnv{w: w, router: engine}
+	return &testEnv{w: w, router: engine, storageDir: storageDir, basePath: opts.BasePath}
 }
 
 // createViewerToken creates a viewer user in the wiki and returns an MCP token
@@ -113,7 +123,7 @@ func postMCP(t *testing.T, env *testEnv, token string, body interface{}) *httpte
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(data))
+	req := httptest.NewRequest(http.MethodPost, env.basePath+"/mcp", bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
