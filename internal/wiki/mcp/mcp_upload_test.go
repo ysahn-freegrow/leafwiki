@@ -279,31 +279,11 @@ func TestMCPUpload_URLHonoursForwardedProtoAndHost(t *testing.T) {
 	editor := editorToken(t, env)
 	pageID := createTestPage(t, env, editor, "Photos")
 
-	data, err := json.Marshal(rpc(6, "tools/call", map[string]interface{}{
-		"name":      "create_upload_url",
-		"arguments": map[string]interface{}{"page_id": pageID},
-	}))
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(data))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+editor)
-	req.Header.Set("X-Forwarded-Proto", "https")
-	req.Header.Set("X-Forwarded-Host", "wiki.example.org")
-	rec := httptest.NewRecorder()
-	env.router.ServeHTTP(rec, req)
-
-	var result struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	mustResult(t, rec.Body.Bytes(), &result)
-	if len(result.Content) == 0 {
-		t.Fatalf("no content: %s", rec.Body)
-	}
-	uploadURL := extractField(result.Content[0].Text, "URL")
+	text := toolCallText(t, env, editor, map[string]string{
+		"X-Forwarded-Proto": "https",
+		"X-Forwarded-Host":  "wiki.example.org",
+	}, "create_upload_url", map[string]interface{}{"page_id": pageID})
+	uploadURL := extractField(text, "URL")
 	if !strings.HasPrefix(uploadURL, "https://wiki.example.org/mcp/uploads/") {
 		t.Fatalf("want URL behind the proxy's public origin; got %q", uploadURL)
 	}

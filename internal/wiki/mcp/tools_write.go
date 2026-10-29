@@ -21,7 +21,7 @@ func writeToolDefinitions() []toolDefinition {
 	return []toolDefinition{
 		{
 			Name:        "create_page",
-			Description: "Create a new wiki page. Optionally place it under a parent and give it initial Markdown content. The authenticated user is recorded as the author.",
+			Description: "Create a new wiki page. Optionally place it under a parent and give it initial Markdown content. The authenticated user is recorded as the author. Follow the server instructions' authoring rules; if required information is missing, ask the user instead of writing.",
 			InputSchema: toolInputSchema{
 				Type: "object",
 				Properties: map[string]toolSchemaProp{
@@ -36,7 +36,7 @@ func writeToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        "update_page",
-			Description: "Update an existing page's title, slug and/or Markdown content. Requires the current version token for optimistic locking; a stale version is rejected with a 409 conflict. The authenticated user is recorded as the last author.",
+			Description: "Update an existing page's title, slug and/or Markdown content. Requires the current version token for optimistic locking; a stale version is rejected with a 409 conflict. The authenticated user is recorded as the last author. Follow the server instructions' authoring rules; if required information is missing, ask the user instead of writing.",
 			InputSchema: toolInputSchema{
 				Type: "object",
 				Properties: map[string]toolSchemaProp{
@@ -78,7 +78,7 @@ type createPageArgs struct {
 
 // callCreatePage executes the create_page tool, attributing authorship to the
 // calling user.
-func (s *Server) callCreatePage(req *jsonRPCRequest, rawArgs json.RawMessage, user *coreauth.User) jsonRPCResponse {
+func (s *Server) callCreatePage(ctx context.Context, req *jsonRPCRequest, rawArgs json.RawMessage, user *coreauth.User) jsonRPCResponse {
 	var args createPageArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return errorResp(req, errCodeInvalidParams, "Invalid create_page arguments")
@@ -107,8 +107,8 @@ func (s *Server) callCreatePage(req *jsonRPCRequest, rawArgs json.RawMessage, us
 		slug = s.slug.GenerateValidSlug(args.Title)
 	}
 
-	ctx := context.Background()
-	out, err := s.create.Execute(ctx, wikipages.CreatePageInput{
+	writeCtx := context.Background()
+	out, err := s.create.Execute(writeCtx, wikipages.CreatePageInput{
 		UserID:   user.ID,
 		ParentID: args.ParentID,
 		Title:    args.Title,
@@ -125,7 +125,7 @@ func (s *Server) callCreatePage(req *jsonRPCRequest, rawArgs json.RawMessage, us
 	content := strings.TrimSpace(args.Content)
 	if content != "" {
 		body := args.Content
-		upd, err := s.update.Execute(ctx, wikipages.UpdatePageInput{
+		upd, err := s.update.Execute(writeCtx, wikipages.UpdatePageInput{
 			UserID:  user.ID,
 			ID:      page.ID,
 			Version: page.Version(),
@@ -139,8 +139,8 @@ func (s *Server) callCreatePage(req *jsonRPCRequest, rawArgs json.RawMessage, us
 		page = upd.Page
 	}
 
-	text := fmt.Sprintf("Created page %q\n- ID: %s\n- Path: %s\n- Version: %s",
-		page.Title, page.ID, page.CalculatePath(), page.Version())
+	text := fmt.Sprintf("Created page %q\n- ID: %s\n- Path: %s\n- Version: %s\n- URL: %s",
+		page.Title, page.ID, page.CalculatePath(), page.Version(), pageURL(ctx, page.CalculatePath()))
 	return jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -159,7 +159,7 @@ type updatePageArgs struct {
 }
 
 // callUpdatePage executes the update_page tool with optimistic locking.
-func (s *Server) callUpdatePage(req *jsonRPCRequest, rawArgs json.RawMessage, user *coreauth.User) jsonRPCResponse {
+func (s *Server) callUpdatePage(ctx context.Context, req *jsonRPCRequest, rawArgs json.RawMessage, user *coreauth.User) jsonRPCResponse {
 	var args updatePageArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return errorResp(req, errCodeInvalidParams, "Invalid update_page arguments")
@@ -205,8 +205,8 @@ func (s *Server) callUpdatePage(req *jsonRPCRequest, rawArgs json.RawMessage, us
 		return s.writeError(req, err)
 	}
 
-	text := fmt.Sprintf("Updated page %q\n- ID: %s\n- Path: %s\n- New version: %s",
-		out.Page.Title, out.Page.ID, out.Page.CalculatePath(), out.Page.Version())
+	text := fmt.Sprintf("Updated page %q\n- ID: %s\n- Path: %s\n- New version: %s\n- URL: %s",
+		out.Page.Title, out.Page.ID, out.Page.CalculatePath(), out.Page.Version(), pageURL(ctx, out.Page.CalculatePath()))
 	return jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -224,7 +224,7 @@ type movePageArgs struct {
 }
 
 // callMovePage executes the move_page tool with optimistic locking.
-func (s *Server) callMovePage(req *jsonRPCRequest, rawArgs json.RawMessage, user *coreauth.User) jsonRPCResponse {
+func (s *Server) callMovePage(ctx context.Context, req *jsonRPCRequest, rawArgs json.RawMessage, user *coreauth.User) jsonRPCResponse {
 	var args movePageArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return errorResp(req, errCodeInvalidParams, "Invalid move_page arguments")
@@ -254,8 +254,8 @@ func (s *Server) callMovePage(req *jsonRPCRequest, rawArgs json.RawMessage, user
 	// Report the post-move location and refreshed version.
 	var text string
 	if page, gerr := s.tree.GetPage(args.ID); gerr == nil {
-		text = fmt.Sprintf("Moved page %q\n- ID: %s\n- New path: %s\n- New version: %s",
-			page.Title, page.ID, page.CalculatePath(), page.Version())
+		text = fmt.Sprintf("Moved page %q\n- ID: %s\n- New path: %s\n- New version: %s\n- URL: %s",
+			page.Title, page.ID, page.CalculatePath(), page.Version(), pageURL(ctx, page.CalculatePath()))
 	} else {
 		text = fmt.Sprintf("Moved page (id: %s)", args.ID)
 	}

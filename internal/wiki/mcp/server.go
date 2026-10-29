@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,13 @@ const (
 	errCodeInvalidParams  = -32602
 	errCodeInternalError  = -32603
 )
+
+// serverInstructions is returned in the initialize result. MCP clients add it
+// to the model's context, so every agent using this server gets the wiki's
+// authoring and citation rules without a client-side skill.
+//
+//go:embed instructions.md
+var serverInstructions string
 
 // Server handles the MCP JSON-RPC 2.0 protocol.
 type Server struct {
@@ -100,6 +108,7 @@ type initializeResult struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	} `json:"serverInfo"`
+	Instructions string `json:"instructions,omitempty"`
 }
 
 // toolInputSchema is a minimal JSON Schema descriptor for a tool's input.
@@ -241,6 +250,7 @@ func (s *Server) handleInitialize(req *jsonRPCRequest) jsonRPCResponse {
 	result := initializeResult{
 		ProtocolVersion: mcpProtocolVersion,
 		Capabilities:    caps,
+		Instructions:    serverInstructions,
 	}
 	result.ServerInfo.Name = serverName
 	result.ServerInfo.Version = serverVersion
@@ -286,9 +296,9 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonRPCRequest, user 
 	switch params.Name {
 	// Read tools — viewer or above.
 	case "search_pages":
-		return s.callSearchPages(req, params.Arguments)
+		return s.callSearchPages(ctx, req, params.Arguments)
 	case "get_page":
-		return s.callGetPage(req, params.Arguments)
+		return s.callGetPage(ctx, req, params.Arguments)
 	case "list_tree":
 		return s.callListTree(req, params.Arguments)
 	case "list_tags":
@@ -302,13 +312,13 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonRPCRequest, user 
 		}
 		switch params.Name {
 		case "create_page":
-			return s.callCreatePage(req, params.Arguments, user)
+			return s.callCreatePage(ctx, req, params.Arguments, user)
 		case "update_page":
-			return s.callUpdatePage(req, params.Arguments, user)
+			return s.callUpdatePage(ctx, req, params.Arguments, user)
 		case "create_upload_url":
 			return s.callCreateUploadURL(ctx, req, params.Arguments, user)
 		default:
-			return s.callMovePage(req, params.Arguments, user)
+			return s.callMovePage(ctx, req, params.Arguments, user)
 		}
 	default:
 		return errorResp(req, errCodeMethodNotFound, fmt.Sprintf("Unknown tool: %s", params.Name))
@@ -316,6 +326,42 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonRPCRequest, user 
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// baseURLKey carries the caller-facing origin + base path (e.g.
+// "https://wiki.example.com/wiki") from the /mcp request into tool handlers.
+type baseURLKey struct{}
+
+// requestBaseURL reconstructs the origin and base path the caller used to
+// reach /mcp, honouring X-Forwarded-Proto/Host from a TLS-terminating reverse
+// proxy. The headers only shape URLs handed back to the same authenticated
+// caller, so trusting them grants nothing.
+func requestBaseURL(c *gin.Context) string {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if p := strings.ToLower(firstHeaderValue(c.GetHeader("X-Forwarded-Proto"))); p == "http" || p == "https" {
+		scheme = p
+	}
+	host := c.Request.Host
+	if h := firstHeaderValue(c.GetHeader("X-Forwarded-Host")); h != "" {
+		host = h
+	}
+	return scheme + "://" + host + strings.TrimSuffix(c.FullPath(), "/mcp")
+}
+
+// firstHeaderValue returns the first entry of a comma-separated header value.
+func firstHeaderValue(v string) string {
+	first, _, _ := strings.Cut(v, ",")
+	return strings.TrimSpace(first)
+}
+
+// pageURL returns the public URL of the wiki page at pagePath, so agents can
+// link the pages they cite without guessing the frontend's routing.
+func pageURL(ctx context.Context, pagePath string) string {
+	base, _ := ctx.Value(baseURLKey{}).(string)
+	return base + "/" + strings.TrimPrefix(pagePath, "/")
+}
 
 func errorResp(req *jsonRPCRequest, code int, msg string) jsonRPCResponse {
 	return jsonRPCResponse{

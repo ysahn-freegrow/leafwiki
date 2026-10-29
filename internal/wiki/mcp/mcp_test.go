@@ -119,6 +119,13 @@ func webAccessToken(t *testing.T, env *testEnv) string {
 // postMCP sends a POST /mcp request with the given bearer token.
 func postMCP(t *testing.T, env *testEnv, token string, body interface{}) *httptest.ResponseRecorder {
 	t.Helper()
+	return postMCPWithHeaders(t, env, token, body, nil)
+}
+
+// postMCPWithHeaders is postMCP with extra request headers (e.g. the
+// X-Forwarded-* headers a reverse proxy adds).
+func postMCPWithHeaders(t *testing.T, env *testEnv, token string, body interface{}, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
 	data, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -127,6 +134,9 @@ func postMCP(t *testing.T, env *testEnv, token string, body interface{}) *httpte
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	rec := httptest.NewRecorder()
 	env.router.ServeHTTP(rec, req)

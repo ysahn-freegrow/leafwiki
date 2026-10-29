@@ -29,10 +29,6 @@ var imageExtensions = map[string]bool{
 	".webp": true, ".bmp": true, ".svg": true,
 }
 
-// baseURLKey carries the caller-facing origin + base path (e.g.
-// "https://wiki.example.com/wiki") from the /mcp request into tool handlers.
-type baseURLKey struct{}
-
 // ─── Tool definition ──────────────────────────────────────────────────────────
 
 // uploadToolDefinition describes create_upload_url. File bytes never travel
@@ -191,31 +187,6 @@ func assetMarkdown(assetURL string) string {
 		return "![" + name + "](" + assetURL + ")"
 	}
 	return "[" + name + "](" + assetURL + ")"
-}
-
-// requestBaseURL reconstructs the origin and base path the caller used to
-// reach /mcp, honouring X-Forwarded-Proto/Host from a TLS-terminating reverse
-// proxy. The headers only shape the URL handed back to the same authenticated
-// caller, so trusting them grants nothing.
-func requestBaseURL(c *gin.Context) string {
-	scheme := "http"
-	if c.Request.TLS != nil {
-		scheme = "https"
-	}
-	if p := strings.ToLower(firstHeaderValue(c.GetHeader("X-Forwarded-Proto"))); p == "http" || p == "https" {
-		scheme = p
-	}
-	host := c.Request.Host
-	if h := firstHeaderValue(c.GetHeader("X-Forwarded-Host")); h != "" {
-		host = h
-	}
-	return scheme + "://" + host + strings.TrimSuffix(c.FullPath(), "/mcp")
-}
-
-// firstHeaderValue returns the first entry of a comma-separated header value.
-func firstHeaderValue(v string) string {
-	first, _, _ := strings.Cut(v, ",")
-	return strings.TrimSpace(first)
 }
 
 func formatByteSize(n int64) string {

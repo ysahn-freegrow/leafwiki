@@ -36,7 +36,7 @@ func readToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        "get_page",
-			Description: "Retrieve a single wiki page by its ID, returning the full Markdown content and the current version token (used for optimistic locking).",
+			Description: "Retrieve a single wiki page by its ID, returning the full Markdown content, its public URL, and the current version token (used for optimistic locking). Link the URL whenever you show this content.",
 			InputSchema: toolInputSchema{
 				Type: "object",
 				Properties: map[string]toolSchemaProp{
@@ -104,7 +104,7 @@ type searchPagesArgs struct {
 }
 
 // callSearchPages executes the search_pages tool.
-func (s *Server) callSearchPages(req *jsonRPCRequest, rawArgs json.RawMessage) jsonRPCResponse {
+func (s *Server) callSearchPages(ctx context.Context, req *jsonRPCRequest, rawArgs json.RawMessage) jsonRPCResponse {
 	var args searchPagesArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return errorResp(req, errCodeInvalidParams, "Invalid search_pages arguments")
@@ -134,12 +134,13 @@ func (s *Server) callSearchPages(req *jsonRPCRequest, rawArgs json.RawMessage) j
 	}
 
 	// Render results as plain text for token-efficient RAG retrieval.
-	// Each result: title, path, excerpt, bm25_score.
+	// Each result: title, path, public URL, excerpt, bm25_score.
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Found %d result(s) for %q:\n\n", out.Result.Count, args.Query))
 	for i, item := range out.Result.Items {
 		sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, item.Title))
 		sb.WriteString(fmt.Sprintf("   Path: %s\n", item.Path))
+		sb.WriteString(fmt.Sprintf("   URL: %s\n", pageURL(ctx, item.Path)))
 		sb.WriteString(fmt.Sprintf("   ID: %s\n", item.PageID))
 		if item.Excerpt != "" {
 			sb.WriteString(fmt.Sprintf("   Excerpt: %s\n", item.Excerpt))
@@ -165,7 +166,7 @@ type getPageArgs struct {
 }
 
 // callGetPage executes the get_page tool.
-func (s *Server) callGetPage(req *jsonRPCRequest, rawArgs json.RawMessage) jsonRPCResponse {
+func (s *Server) callGetPage(ctx context.Context, req *jsonRPCRequest, rawArgs json.RawMessage) jsonRPCResponse {
 	var args getPageArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return errorResp(req, errCodeInvalidParams, "Invalid get_page arguments")
@@ -189,6 +190,7 @@ func (s *Server) callGetPage(req *jsonRPCRequest, rawArgs json.RawMessage) jsonR
 	sb.WriteString(fmt.Sprintf("# %s\n\n", page.Title))
 	sb.WriteString(fmt.Sprintf("**ID:** %s  \n", page.ID))
 	sb.WriteString(fmt.Sprintf("**Path:** %s  \n", page.CalculatePath()))
+	sb.WriteString(fmt.Sprintf("**URL:** %s  \n", pageURL(ctx, page.CalculatePath())))
 	sb.WriteString(fmt.Sprintf("**Version:** %s  \n", page.Version()))
 	sb.WriteString(fmt.Sprintf("**Kind:** %s  \n\n", page.Kind))
 	sb.WriteString("---\n\n")
